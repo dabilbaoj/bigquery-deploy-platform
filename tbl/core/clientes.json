@@ -1,0 +1,109 @@
+{
+  "apiVersion": "bqdeploy/v1",
+  "kind": "Table",
+  "metadata": {
+    "dataset": "core",
+    "name": "clientes",
+    "friendlyName": "Clientes",
+    "description": "Maestro consolidado de clientes.",
+    "labels": {
+      "domain": "clientes",
+      "managed_by": "bqdeploy"
+    }
+  },
+  "spec": {
+    "schema": {
+      "fields": [
+        {
+          "name": "cliente_id",
+          "type": "STRING",
+          "mode": "REQUIRED",
+          "maxLength": "36",
+          "description": "Identificador único del cliente."
+        },
+        {
+          "name": "email",
+          "type": "STRING",
+          "mode": "NULLABLE",
+          "maxLength": "254",
+          "description": "Correo electrónico principal.",
+          "policyTag": "customer_data.email"
+        },
+        {
+          "name": "atributos",
+          "type": "JSON",
+          "mode": "NULLABLE",
+          "description": "Atributos variables del cliente."
+        },
+        {
+          "name": "direccion",
+          "type": "STRUCT",
+          "mode": "NULLABLE",
+          "description": "Dirección principal.",
+          "fields": [
+            {
+              "name": "calle",
+              "type": "STRING",
+              "mode": "NULLABLE",
+              "maxLength": "150",
+              "description": "Calle y número."
+            },
+            {
+              "name": "ubicacion",
+              "type": "GEOGRAPHY",
+              "mode": "NULLABLE",
+              "description": "Ubicación geográfica."
+            }
+          ]
+        },
+        {
+          "name": "telefonos",
+          "type": "STRING",
+          "mode": "REPEATED",
+          "maxLength": "20",
+          "description": "Teléfonos asociados al cliente."
+        },
+        {
+          "name": "limite_credito",
+          "type": "NUMERIC",
+          "mode": "NULLABLE",
+          "precision": "15",
+          "scale": "6",
+          "roundingMode": "ROUND_HALF_AWAY_FROM_ZERO",
+          "description": "Límite de crédito asignado."
+        },
+        {
+          "name": "periodo_vigencia",
+          "type": "RANGE",
+          "mode": "NULLABLE",
+          "rangeElementType": {
+            "type": "DATE"
+          },
+          "description": "Periodo de vigencia del cliente."
+        },
+        {
+          "name": "duracion_relacion",
+          "type": "INTERVAL",
+          "mode": "NULLABLE",
+          "description": "Duración calculada de la relación."
+        },
+        {
+          "name": "fecha_creacion",
+          "type": "TIMESTAMP",
+          "mode": "REQUIRED",
+          "defaultValueExpression": "CURRENT_TIMESTAMP()",
+          "description": "Fecha de creación del registro."
+        }
+      ]
+    },
+    "timePartitioning": {
+      "type": "DAY",
+      "field": "fecha_creacion"
+    },
+    "requirePartitionFilter": true,
+    "clustering": {
+      "fields": ["cliente_id"]
+    }
+  }
+}
+

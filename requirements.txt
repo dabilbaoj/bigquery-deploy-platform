@@ -1,0 +1,2 @@
+google-cloud-bigquery==3.44.0
+jsonschema==4.26.0

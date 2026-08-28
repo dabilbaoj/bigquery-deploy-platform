@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/bqdeploy-table-v1.json",
+  "title": "BigQuery declarative table manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "const": "bqdeploy/v1"
+    },
+    "kind": {
+      "const": "Table"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset", "name", "description"],
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_]{1,1024}$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,1023}$"
+        },
+        "friendlyName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 16384
+        },
+        "labels": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{0,63}$"
+          }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema"],
+      "properties": {
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fields"],
+          "properties": {
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/field"
+              }
+            }
+          }
+        },
+        "timePartitioning": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "field"],
+          "properties": {
+            "type": {
+              "enum": ["DAY", "HOUR", "MONTH", "YEAR"]
+            },
+            "field": {
+              "type": "string"
+            },
+            "expirationMs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        },
+        "rangePartitioning": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "range"],
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "range": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start", "end", "interval"],
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+$"
+                },
+                "end": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+$"
+                },
+                "interval": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                }
+              }
+            }
+          }
+        },
+        "requirePartitionFilter": {
+          "type": "boolean"
+        },
+        "clustering": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fields"],
+          "properties": {
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "not": {
+        "required": ["timePartitioning", "rangePartitioning"]
+      }
+    }
+  },
+  "$defs": {
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,299}$"
+        },
+        "type": {
+          "enum": [
+            "STRING",
+            "BYTES",
+            "INT64",
+            "INTEGER",
+            "FLOAT64",
+            "FLOAT",
+            "BOOL",
+            "BOOLEAN",
+            "NUMERIC",
+            "BIGNUMERIC",
+            "DATE",
+            "TIME",
+            "DATETIME",
+            "TIMESTAMP",
+            "GEOGRAPHY",
+            "JSON",
+            "INTERVAL",
+            "STRUCT",
+            "RECORD",
+            "RANGE"
+          ]
+        },
+        "mode": {
+          "enum": ["NULLABLE", "REQUIRED", "REPEATED"]
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "policyTag": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "maxLength": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "precision": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "scale": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "roundingMode": {
+          "enum": ["ROUND_HALF_AWAY_FROM_ZERO", "ROUND_HALF_EVEN"]
+        },
+        "collation": {
+          "enum": ["", "und:ci"]
+        },
+        "defaultValueExpression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rangeElementType": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "enum": ["DATE", "DATETIME", "TIMESTAMP"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
