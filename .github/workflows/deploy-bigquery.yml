@@ -110,27 +110,31 @@ jobs:
               location="$DEV_LOCATION"
               wif_provider="$DEV_WIF_PROVIDER"
               service_account="$DEV_SERVICE_ACCOUNT"
-              policy_tags="${DEV_POLICY_TAGS:-{}}"
+              policy_tags="${DEV_POLICY_TAGS:-}"
               ;;
             qa)
               project_id="$QA_PROJECT_ID"
               location="$QA_LOCATION"
               wif_provider="$QA_WIF_PROVIDER"
               service_account="$QA_SERVICE_ACCOUNT"
-              policy_tags="${QA_POLICY_TAGS:-{}}"
+              policy_tags="${QA_POLICY_TAGS:-}"
               ;;
             prod)
               project_id="$PROD_PROJECT_ID"
               location="$PROD_LOCATION"
               wif_provider="$PROD_WIF_PROVIDER"
               service_account="$PROD_SERVICE_ACCOUNT"
-              policy_tags="${PROD_POLICY_TAGS:-{}}"
+              policy_tags="${PROD_POLICY_TAGS:-}"
               ;;
             *)
               echo "Ambiente no soportado: $REQUESTED_ENVIRONMENT" >&2
               exit 2
               ;;
           esac
+
+          if [[ -z "$policy_tags" ]]; then
+            policy_tags="{}"
+          fi
 
           for required_value in project_id location wif_provider service_account; do
             if [[ -z "${!required_value}" ]]; then
