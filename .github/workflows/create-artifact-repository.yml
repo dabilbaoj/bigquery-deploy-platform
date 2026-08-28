@@ -1,0 +1,105 @@
+name: Create BigQuery artifact repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner_type:
+        description: Tipo de propietario del nuevo repositorio
+        required: true
+        type: choice
+        default: user
+        options:
+          - user
+          - organization
+      repository_owner:
+        description: Usuario u organización propietaria
+        required: true
+        type: string
+      repository_name:
+        description: Nombre del repositorio
+        required: true
+        type: string
+      visibility:
+        description: Visibilidad
+        required: true
+        type: choice
+        default: private
+        options:
+          - private
+          - public
+      description:
+        description: Descripción opcional
+        required: false
+        type: string
+        default: BigQuery table and stored procedure artifacts
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Create empty repository
+        id: create
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_FACTORY_TOKEN }}
+          OWNER_TYPE: ${{ inputs.owner_type }}
+          REPOSITORY_OWNER: ${{ inputs.repository_owner }}
+          REPOSITORY_NAME: ${{ inputs.repository_name }}
+          REPOSITORY_VISIBILITY: ${{ inputs.visibility }}
+          REPOSITORY_DESCRIPTION: ${{ inputs.description }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "Falta el secret REPOSITORY_FACTORY_TOKEN" >&2
+            exit 2
+          fi
+          if [[ ! "$REPOSITORY_OWNER" =~ ^[A-Za-z0-9-]+$ ]]; then
+            echo "Propietario inválido: $REPOSITORY_OWNER" >&2
+            exit 2
+          fi
+          if [[ ! "$REPOSITORY_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Nombre de repositorio inválido: $REPOSITORY_NAME" >&2
+            exit 2
+          fi
+
+          if [[ "$REPOSITORY_VISIBILITY" == "private" ]]; then
+            private_repository=true
+          else
+            private_repository=false
+          fi
+
+          if [[ "$OWNER_TYPE" == "user" ]]; then
+            authenticated_user="$(gh api /user --jq .login)"
+            if [[ "$authenticated_user" != "$REPOSITORY_OWNER" ]]; then
+              echo "El token pertenece a '$authenticated_user', no a '$REPOSITORY_OWNER'" >&2
+              exit 2
+            fi
+            api_endpoint="/user/repos"
+          else
+            api_endpoint="/orgs/$REPOSITORY_OWNER/repos"
+          fi
+
+          repository_url="$(
+            gh api \
+              --method POST \
+              "$api_endpoint" \
+              -f name="$REPOSITORY_NAME" \
+              -f description="$REPOSITORY_DESCRIPTION" \
+              -F private="$private_repository" \
+              -F auto_init=false \
+              --jq .html_url
+          )"
+
+          echo "repository_url=$repository_url" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Artifact repository created"
+            echo
+            echo "- Repository: [$REPOSITORY_OWNER/$REPOSITORY_NAME]($repository_url)"
+            echo "- Initial state: empty"
+            echo "- Allowed content: \`tbl/<dataset>/*.json\` and \`sp/<dataset>/*.sql\`"
+          } >> "$GITHUB_STEP_SUMMARY"

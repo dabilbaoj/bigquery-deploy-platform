@@ -1,0 +1,179 @@
+name: Deploy BigQuery artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Repositorio de artefactos en formato owner/repository
+        required: true
+        type: string
+      source_ref:
+        description: Branch, tag o SHA exacto del repositorio de artefactos
+        required: true
+        type: string
+        default: main
+      target_environment:
+        description: Ambiente GCP de destino
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - qa
+          - prod
+      operation:
+        description: Generar plan o aplicar cambios
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: bigquery-${{ inputs.source_repository }}-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout deployment platform
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Checkout user artifacts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_ref }}
+          path: artifact-source
+          token: ${{ secrets.ARTIFACT_REPOSITORY_TOKEN }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --requirement requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate artifacts before authentication
+        run: >-
+          python scripts/bq_deploy.py validate
+          --root artifact-source
+          --schema schemas/table.schema.json
+          --strict-artifact-repository
+          --report deployment-report.json
+
+      - name: Resolve protected deployment configuration
+        id: config
+        shell: bash
+        env:
+          REQUESTED_ENVIRONMENT: ${{ inputs.target_environment }}
+          REQUESTED_OPERATION: ${{ inputs.operation }}
+
+          DEV_PROJECT_ID: ${{ vars.BQ_PROJECT_ID_DEV }}
+          DEV_LOCATION: ${{ vars.BQ_LOCATION_DEV }}
+          DEV_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER_DEV }}
+          DEV_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT_DEV }}
+          DEV_POLICY_TAGS: ${{ vars.BQ_POLICY_TAGS_DEV }}
+
+          QA_PROJECT_ID: ${{ vars.BQ_PROJECT_ID_QA }}
+          QA_LOCATION: ${{ vars.BQ_LOCATION_QA }}
+          QA_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER_QA }}
+          QA_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT_QA }}
+          QA_POLICY_TAGS: ${{ vars.BQ_POLICY_TAGS_QA }}
+
+          PROD_PROJECT_ID: ${{ vars.BQ_PROJECT_ID_PROD }}
+          PROD_LOCATION: ${{ vars.BQ_LOCATION_PROD }}
+          PROD_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER_PROD }}
+          PROD_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT_PROD }}
+          PROD_POLICY_TAGS: ${{ vars.BQ_POLICY_TAGS_PROD }}
+        run: |
+          set -euo pipefail
+
+          case "$REQUESTED_ENVIRONMENT" in
+            dev)
+              project_id="$DEV_PROJECT_ID"
+              location="$DEV_LOCATION"
+              wif_provider="$DEV_WIF_PROVIDER"
+              service_account="$DEV_SERVICE_ACCOUNT"
+              policy_tags="${DEV_POLICY_TAGS:-{}}"
+              ;;
+            qa)
+              project_id="$QA_PROJECT_ID"
+              location="$QA_LOCATION"
+              wif_provider="$QA_WIF_PROVIDER"
+              service_account="$QA_SERVICE_ACCOUNT"
+              policy_tags="${QA_POLICY_TAGS:-{}}"
+              ;;
+            prod)
+              project_id="$PROD_PROJECT_ID"
+              location="$PROD_LOCATION"
+              wif_provider="$PROD_WIF_PROVIDER"
+              service_account="$PROD_SERVICE_ACCOUNT"
+              policy_tags="${PROD_POLICY_TAGS:-{}}"
+              ;;
+            *)
+              echo "Ambiente no soportado: $REQUESTED_ENVIRONMENT" >&2
+              exit 2
+              ;;
+          esac
+
+          for required_value in project_id location wif_provider service_account; do
+            if [[ -z "${!required_value}" ]]; then
+              echo "Falta configurar $required_value para $REQUESTED_ENVIRONMENT" >&2
+              exit 2
+            fi
+          done
+
+          echo "environment=$REQUESTED_ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "operation=$REQUESTED_OPERATION" >> "$GITHUB_OUTPUT"
+          echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
+          echo "location=$location" >> "$GITHUB_OUTPUT"
+          echo "wif_provider=$wif_provider" >> "$GITHUB_OUTPUT"
+          echo "service_account=$service_account" >> "$GITHUB_OUTPUT"
+          {
+            echo "BQ_POLICY_TAGS_JSON<<__BQ_POLICY_TAGS__"
+            echo "$policy_tags"
+            echo "__BQ_POLICY_TAGS__"
+          } >> "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ steps.config.outputs.project_id }}
+          workload_identity_provider: ${{ steps.config.outputs.wif_provider }}
+          service_account: ${{ steps.config.outputs.service_account }}
+
+      - name: Plan or apply BigQuery resources
+        run: >-
+          python scripts/bq_deploy.py "${{ steps.config.outputs.operation }}"
+          --root artifact-source
+          --schema schemas/table.schema.json
+          --strict-artifact-repository
+          --environment "${{ steps.config.outputs.environment }}"
+          --project "${{ steps.config.outputs.project_id }}"
+          --location "${{ steps.config.outputs.location }}"
+          --report deployment-report.json
+
+      - name: Upload deployment report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bigquery-${{ steps.config.outputs.environment || 'unresolved' }}-${{ github.run_id }}
+          path: deployment-report.json
+          if-no-files-found: ignore
+          retention-days: 30
